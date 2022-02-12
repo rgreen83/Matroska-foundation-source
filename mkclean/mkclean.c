@@ -160,7 +160,7 @@ static int GetProfileId(int Profile)
 }
 
 static int DocVersion = 1;
-static int SrcProfile = 0, DstProfile = 0;
+static int SrcProfile = 0, DstProfile = PROFILE_MATROSKA_V4;
 static textwriter *StdErr = NULL;
 static size_t ExtraSizeDiff = 0;
 static bool_t Quiet = 0;
@@ -660,7 +660,8 @@ static bool_t WriteCluster(ebml_master *Cluster, struct stream *Output, struct s
     ebml_element *Elt;
     bool_t CuesChanged = ReadClusterData(Cluster, Input);
 
-    if (*PrevTimestamp != INVALID_TIMESTAMP_T)
+    // this seems to cause problems: mpv warns "Invalid video timestamp: 10.085000 -> 10.060000"
+    /* if (*PrevTimestamp != INVALID_TIMESTAMP_T)
     {
         mkv_timestamp_t OrigTimestamp = MATROSKA_ClusterTimestamp((matroska_cluster*)Cluster);
         if (*PrevTimestamp >= OrigTimestamp)
@@ -670,7 +671,7 @@ static bool_t WriteCluster(ebml_master *Cluster, struct stream *Output, struct s
             MATROSKA_ClusterSetTimestamp((matroska_cluster*)Cluster, *PrevTimestamp + MATROSKA_ClusterTimestampScale((matroska_cluster*)Cluster, 0));
             CuesChanged = 1;
         }
-    }
+    }*/
     *PrevTimestamp = MATROSKA_ClusterTimestamp((matroska_cluster*)Cluster);
 
     EBML_ElementRender((ebml_element*)Cluster,Output,0,0,1,DstProfile,NULL);
@@ -1516,7 +1517,7 @@ int main(int argc, const char *argv[])
     size_t ExtraVoidSize = 0;
     mkv_timestamp_t PrevTimestamp;
     bool_t CuesChanged;
-    bool_t KeepCues = 0, Remux = 0, CuesCreated = 0, Optimize = 0, OptimizeVideo = 1, UnOptimize = 0, ClustersNeedRead = 0, Regression = 0;
+    bool_t KeepCues = 0, Remux = 0, CuesCreated = 0, Optimize = 0, OptimizeVideo = 1, UnOptimize = 1, ClustersNeedRead = 0, Regression = 0;
     MatroskaTrackEncodingCompAlgo CompressionAlgo = MATROSKA_TRACK_ENCODING_COMP_NONE;
     int InputPathIndex = 1;
     int64_t TimestampScale = 0, OldTimestampScale;
@@ -1622,8 +1623,8 @@ int main(int argc, const char *argv[])
             InputPathIndex = i+1;
         }
         else if (tcsisame_ascii(Path,T("--unsafe"))) { Unsafe = 1; InputPathIndex = i+1; }
-        else if (tcsisame_ascii(Path,T("--optimize"))) { Optimize = 1; OptimizeVideo = 1; InputPathIndex = i+1; }
-        else if (tcsisame_ascii(Path,T("--optimize_nv"))) { Optimize = 1; OptimizeVideo = 0; InputPathIndex = i+1; }
+        else if (tcsisame_ascii(Path,T("--optimize"))) { UnOptimize = 0; Optimize = 1; OptimizeVideo = 1; InputPathIndex = i+1; }
+        else if (tcsisame_ascii(Path,T("--optimize_nv"))) { UnOptimize = 0; Optimize = 1; OptimizeVideo = 0; InputPathIndex = i+1; }
         else if (tcsisame_ascii(Path,T("--compalgo")) && i+1<argc-1)
         {
 #if defined(TARGET_WIN) && defined(UNICODE)
@@ -1643,7 +1644,6 @@ int main(int argc, const char *argv[])
             InputPathIndex = i+1;
         }
         else if (tcsisame_ascii(Path,T("--regression"))) { Regression = 1; InputPathIndex = i+1; }
-        else if (tcsisame_ascii(Path,T("--no-optimize"))) { UnOptimize = 1; InputPathIndex = i+1; }
         else if (tcsisame_ascii(Path,T("--quiet"))) { Quiet = 1; InputPathIndex = i+1; }
         else if (tcsisame_ascii(Path,T("--version"))) { ShowVersion = 1; InputPathIndex = i+1; }
         else if (tcsisame_ascii(Path,T("--help"))) {ShowVersion = 1; ShowUsage = 1; InputPathIndex = i+1; }
@@ -1652,7 +1652,7 @@ int main(int argc, const char *argv[])
 
     if (argc < (1+InputPathIndex) || ShowVersion)
     {
-        TextWrite(StdErr,PROJECT_NAME T(" v") PROJECT_VERSION T(", Copyright (c) 2010-2020 Matroska Foundation\r\n"));
+        TextWrite(StdErr,PROJECT_NAME T(" v") PROJECT_VERSION T("-pragmatic, https://github.com/XMB5/mkclean-pragmatic\r\n"));
         if (argc < 2 || ShowUsage)
         {
             TextWrite(StdErr,T("Usage: ") PROJECT_NAME T(" [options] <matroska_src> [matroska_dst]\r\n"));
@@ -1672,7 +1672,6 @@ int main(int argc, const char *argv[])
             TextWrite(StdErr,T("  --compalgo <v> force compression algorithm of all tracks\r\n"));
             TextWrite(StdErr,T("  --optimize    use all possible optimization for the output file\r\n"));
             TextWrite(StdErr,T("  --optimize_nv use all possible optimization for the output file, except video tracks\r\n"));
-            TextWrite(StdErr,T("  --no-optimize disable some optimization for the output file\r\n"));
             TextWrite(StdErr,T("  --regression  the output file is suitable for regression tests\r\n"));
             TextWrite(StdErr,T("  --alt-3d <t>  the track with ID <v> has alternate 3D fields (left first)\r\n"));
             TextWrite(StdErr,T("  --quiet       only output errors\r\n"));
@@ -1996,12 +1995,12 @@ int main(int argc, const char *argv[])
     assert(Node_IsPartOf(RLevel1,EBML_INTEGER_CLASS));
     EBML_IntegerSetValue((ebml_integer*)RLevel1, DocVersion);
 
-    // Doctype readable version
+    // Doctype readable version: set this to 2 for improved compatibility
     RLevel1 = (ebml_master*)EBML_MasterGetChild(EbmlHead,EBML_getContextDocTypeReadVersion(), EBML_ANY_PROFILE);
     if (!RLevel1)
         goto exit;
     assert(Node_IsPartOf(RLevel1,EBML_INTEGER_CLASS));
-    EBML_IntegerSetValue((ebml_integer*)RLevel1, DocVersion);
+    EBML_IntegerSetValue((ebml_integer*)RLevel1, 2);
 
     if (EBML_ElementRender((ebml_element*)EbmlHead,Output,1,0,1,DstProfile,NULL)!=ERR_NONE)
         goto exit;
